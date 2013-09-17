@@ -85,6 +85,8 @@ bc_image_rec = re.compile('<a class="popupImage" href="(.+\.(jpg|png|gif))">')
 # http://clearsignals.bandcamp.com/album/stars-lost-your-name
 bc_url_rec = re.compile('https?://([^/]+?)(?:\.bandcamp\.com)?/album/([^/]+)')
 
+missing_image = '<div id="missing-tralbum-art"'
+
 def download_cover(img_url, filename):
     if os.path.exists(filename):
         print "SKIP download, already done: %r" % filename
@@ -110,6 +112,9 @@ def fetch_cover(url):
     referrer = br.geturl()
     print "Title: %s" % title
 
+    if missing_image in data:
+        return None
+
     img_url, ext = re_find1(bc_image_rec, data)
     dest_filename = os.path.join(BC_CACHE, host, '%s.%s' % (album, ext))
 
@@ -119,6 +124,7 @@ def fetch_cover(url):
 
     cover = {
         'url': url,
+        'img_url': img_url,
         'referrer': referrer,
         'file': dest_filename,
         'title': title,
@@ -226,6 +232,10 @@ def auto_bc_upload():
 def handle_bc_cover(bc_url, mbids):
     print "Downloading from", bc_url
     cover = fetch_cover(bc_url)
+
+    if cover is None:
+        print "SKIP, no cover on Bandcamp"
+        return
 
     if mbids:
         data = annotate_image(cover['file'])
