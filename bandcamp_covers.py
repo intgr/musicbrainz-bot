@@ -1,12 +1,21 @@
 #!/usr/bin/env python2
+"""
+To speed up queries in auto mode:
+  CREATE EXTENSION pg_trgm;
+  CREATE INDEX ON url USING gin(url gin_trgm_ops);
+"""
 
 USAGE = """\
-This script allows manual uploading of cover images from Bandcamp to
-MusicBrainz.
+This script allows manual or automatic uploading of cover images from
+Bandcamp to MusicBrainz.
 
 Usage: %(cmd)s bandcamp_url [mbid ...]
 MBIDs can be given as musicbrainz.org URLs, will be automatically parsed.
 Example: %(cmd)s http://clearsignals.bandcamp.com/album/stars-lost-your-name e672cf29-6b11-4819-aad0-5748cbe8452e
+
+Auto mode: %(cmd)s
+In automatic mode, the script will find releases with attached Bandcamp URLs
+that don't have a Front cover, and will automatically upload one from Bandcamp.
 """
 
 import sys
@@ -27,7 +36,6 @@ except ImportError:
 
 try:
     import psycopg2
-    from psycopg2.extras import NamedTupleCursor
 except ImportError:
     psycopg2 = None
 
@@ -98,7 +106,7 @@ def fetch_cover(url):
     resp = br.open(url)
     data = resp.read()
 
-    title = br.title()
+    title = br.title().decode('utf8')
     referrer = br.geturl()
     print "Title: %s" % title
 
@@ -110,6 +118,7 @@ def fetch_cover(url):
     download_cover(img_url, dest_filename)
 
     cover = {
+        'url': url,
         'referrer': referrer,
         'file': dest_filename,
         'title': title,
@@ -152,23 +161,65 @@ def annotate_image(filename):
 
 COMMENT = ""
 def upload_cover(cov, mbid):
-    upload_id = "%s %s" % (mbid, cov['referrer'])
+    upload_id = "%s %s" % (mbid, cov['url'])
 
     if upload_id in state:
         print "SKIP upload, already done: %r" % cov['file']
         return
 
     types = ['front']
-    note  = "\"%(title)s\"\nfrom %(referrer)s\n" % cov
-    note += "Size: %(size_pretty)s (%(size_bytes)s bytes)" % cov
+    note  = u"\"%(title)s\"\nfrom %(referrer)s\n" % cov
+    note += u"Size: %(size_pretty)s (%(size_bytes)s bytes)" % cov
     if cov['dims']:
-        note += " / Dimensions: %dx%d" % cov['dims']
+        note += u" / Dimensions: %dx%d" % cov['dims']
 
     print "Uploading %(file)r (%(size_pretty)s)" % cov
 
     mb.add_cover_art(mbid, cov['file'], types, None, COMMENT, note, False)
 
     done(upload_id)
+
+#### DATABASE
+
+bc_rels_sql = """\
+SELECT rn.name, r.gid, u.url
+FROM l_release_url ru
+JOIN url u ON (ru.entity1=u.id)
+JOIN release r ON (ru.entity0=r.id)
+JOIN release_name rn ON (r.name=rn.id)
+WHERE u.url LIKE '%bandcamp.com/album/%'
+  AND ru.edits_pending = 0
+  AND NOT EXISTS (
+      SELECT * FROM cover_art ca JOIN cover_art_type cat ON (cat.id=ca.id)
+      WHERE ca.release=r.id AND cat.type_id=1 /*Front*/
+    )
+ORDER BY u.url
+"""
+
+def auto_bc_upload():
+    if psycopg2 is None:
+        print "Warning: psycopg2 could not be imported, cannot run in auto mode"
+        return
+
+    try:
+        db = psycopg2.connect(cfg.MB_DB)
+        cur = db.cursor()
+    except psycopg2.Error as err:
+        print "Warning: Cannot connect to database: %s" % err
+        return
+
+    cur.execute(bc_rels_sql)
+
+    for name, mbid, url in cur:
+        upload_id = "%s %s" % (mbid, url)
+        if upload_id in state:
+            print "SKIP '%s' from %r" % (name, url)
+            continue
+
+        print "Auto-uploading '%s' from %r" % (name, url)
+
+        handle_bc_cover(url, [mbid])
+        print
 
 #### CORE
 
@@ -192,7 +243,7 @@ def print_help():
 
 uuid_rec = re.compile('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
 def bot_main():
-    if len(sys.argv) <= 1 or '--help' in sys.argv or '-h' in sys.argv:
+    if '--help' in sys.argv or '-h' in sys.argv:
         print_help()
         sys.exit(1)
 
@@ -217,6 +268,8 @@ def bot_main():
     init_br()
     if bc_url:
         handle_bc_cover(bc_url, mbids)
+    else:
+        auto_bc_upload()
 
 def init_br():
     global br
@@ -226,8 +279,12 @@ def init_br():
     br.set_handle_refresh(False) # can sometimes hang without this
     br.addheaders = [('User-agent', 'Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.1) Gecko/2008071615 Fedora/3.0.1-1.fc9 Firefox/3.0.1')]
 
+mb = None
 def init_mb():
     global mb
+
+    if mb:
+        return # Already logged in
 
     print "Logging in..."
     mb = MusicBrainzClient(cfg.MB_USERNAME, cfg.MB_PASSWORD, cfg.MB_SITE)
