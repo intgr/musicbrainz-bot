@@ -21,6 +21,7 @@ that don't have a Front cover, and will automatically upload one from Bandcamp.
 import sys
 import os
 import re
+import urllib2
 import mechanize
 
 from editing import MusicBrainzClient
@@ -105,14 +106,22 @@ def download_cover(img_url, filename):
 def fetch_cover(url):
     host, album = re_find1(bc_url_rec, url)
 
-    resp = br.open(url)
-    data = resp.read()
+    try:
+        resp = br.open(url)
+        data = resp.read()
+    except urllib2.HTTPError as err:
+        if err.getcode() == 404:
+            print "SKIP, broken link (404)"
+            return None
+        else:
+            raise
 
     title = br.title().decode('utf8')
     referrer = br.geturl()
     print "Title: %s" % title
 
     if missing_image in data:
+        print "SKIP, Bandcamp album is missing cover"
         return None
 
     img_url, ext = re_find1(bc_image_rec, data)
@@ -234,7 +243,6 @@ def handle_bc_cover(bc_url, mbids):
     cover = fetch_cover(bc_url)
 
     if cover is None:
-        print "SKIP, no cover on Bandcamp"
         return
 
     if mbids:
