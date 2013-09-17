@@ -1,5 +1,17 @@
 #!/usr/bin/env python2
 
+USAGE = """\
+This script allows manual uplopading of cover images from AllCDCovers to
+MusicBrainz.
+
+Usage: %(cmd)s allcdcovers_url [mbid ...]
+MBIDs can be given as musicbrainz.org URLs, will be automatically parsed.
+Example: %(cmd)s http://www.allcdcovers.com/show/160217/boards_of_canada_twoism_2002_retail_cd/front https://musicbrainz.org/release/a95dbc6e-3066-46ea-91ed-cfb9539f0c7c
+
+If no MIBDs are given and the necessary dependencies can be found, this script
+will automatically try to look up matching releases by barcode.
+"""
+
 import sys
 import os
 import re
@@ -276,7 +288,7 @@ def upload_covers(covers, mbid):
 
         done(upload_id)
 
-#### BARCODE MATCHING
+#### DATABASE
 
 def find_mbid_by_barcode(barcodes):
     if psycopg2 is None:
@@ -323,6 +335,8 @@ def find_mbid_by_barcode(barcodes):
         query = urllib.quote_plus(' OR '.join(lookup))
         print "Please go here: %s/search?type=release&query=%s" % (cfg.MB_SITE, query)
 
+#### CORE
+
 def handle_acc_covers(acc_url, mbids):
     print "Downloading from", acc_url
     covers = fetch_covers(acc_url)
@@ -352,13 +366,12 @@ def handle_acc_covers(acc_url, mbids):
         print "Done!", mburl
 
 def print_help():
-    print "Usage: %s allcdcovers_url [mbid ...]" % sys.argv[0]
-    print "MBIDs can be given as musicbrainz.org URLs, will be automatically parsed."
-    print "Example: %s http://www.allcdcovers.com/show/160217/boards_of_canada_twoism_2002_retail_cd/front https://musicbrainz.org/release/a95dbc6e-3066-46ea-91ed-cfb9539f0c7c" % sys.argv[0]
+    print USAGE % {'cmd': sys.argv[0]}
 
 uuid_rec = re.compile('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
 def bot_main():
     if len(sys.argv) <= 1 or '--help' in sys.argv or '-h' in sys.argv:
+        print_help()
         sys.exit(1)
 
     acc_url = None

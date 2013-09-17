@@ -1,5 +1,14 @@
 #!/usr/bin/env python2
 
+USAGE = """\
+This script allows manual uploading of cover images from Bandcamp to
+MusicBrainz.
+
+Usage: %(cmd)s bandcamp_url [mbid ...]
+MBIDs can be given as musicbrainz.org URLs, will be automatically parsed.
+Example: %(cmd)s http://clearsignals.bandcamp.com/album/stars-lost-your-name e672cf29-6b11-4819-aad0-5748cbe8452e
+"""
+
 import sys
 import os
 import re
@@ -179,9 +188,7 @@ def handle_bc_cover(bc_url, mbids):
         print "Done!", mburl
 
 def print_help():
-    print "Usage: %s bandcamp_url [mbid ...]" % sys.argv[0]
-    print "MBIDs can be given as musicbrainz.org URLs, will be automatically parsed."
-    print "Example: %s http://clearsignals.bandcamp.com/album/stars-lost-your-name e672cf29-6b11-4819-aad0-5748cbe8452e" % sys.argv[0]
+    print USAGE % {'cmd': sys.argv[0]}
 
 uuid_rec = re.compile('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
 def bot_main():
