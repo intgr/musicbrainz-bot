@@ -196,8 +196,10 @@ def upload_cover(cov, mbid):
 
 #### DATABASE
 
+# GROUP BY/HAVING is there to exclude one release having 2 different Bandcamp links.
+# min() is here just to make PostgreSQL not complain, we require count(distinct u.url)=1 so it makes no difference.
 bc_rels_sql = """\
-SELECT rn.name, r.gid, u.url
+SELECT rn.name, r.gid, min(u.url)
 FROM l_release_url ru
 JOIN url u ON (ru.entity1=u.id)
 JOIN release r ON (ru.entity0=r.id)
@@ -208,7 +210,8 @@ WHERE u.url LIKE '%bandcamp.com/album/%'
       SELECT * FROM cover_art ca JOIN cover_art_type cat ON (cat.id=ca.id)
       WHERE ca.release=r.id AND cat.type_id=1 /*Front*/
     )
-ORDER BY u.url
+GROUP BY 1,2 HAVING count(distinct u.url)=1
+ORDER BY min(u.url)
 """
 
 def auto_bc_upload():
