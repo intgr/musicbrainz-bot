@@ -111,10 +111,13 @@ def fetch_cover(url):
         data = resp.read()
     except urllib2.HTTPError as err:
         if err.getcode() == 404:
-            print "SKIP, broken link (404)"
+            print "SKIP: %s" % err
             return None
         else:
             raise
+    except urllib2.URLError as err:
+        print "SKIP: %s" % err
+        return None
 
     title = br.title().decode('utf8')
     referrer = br.geturl()
